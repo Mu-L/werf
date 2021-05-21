@@ -3,7 +3,7 @@
 {% else %}
 {% assign header = "###" %}
 {% endif %}
-Publish bundle into the container registry. Werf bundle contains built images defined in the        
+Publish bundle into the container registry. werf bundle contains built images defined in the        
 werf.yaml, helm chart, service values which contain built images tags, any custom values and set    
 values params provided during publish invocation, werf addon templates (like werf_image).
 
@@ -14,18 +14,6 @@ Published into container registry bundle can be rolled out by the &#34;werf bund
 
 ```shell
 werf bundle publish [options]
-```
-
-{{ header }} Environments
-
-```shell
-  $WERF_DEBUG_ANSIBLE_ARGS  Pass specified cli args to ansible ($ANSIBLE_ARGS)
-  $WERF_SECRET_KEY          Use specified secret key to extract secrets for the deploy. Recommended 
-                            way to set secret key in CI-system. 
-                            
-                            Secret key also can be defined in files:
-                            * ~/.werf/global_secret_key (globally),
-                            * .werf_secret_key (per project)
 ```
 
 {{ header }} Options
@@ -42,13 +30,24 @@ werf bundle publish [options]
             Format: labelName=labelValue.
             Also, can be specified with $WERF_ADD_LABEL_* (e.g.                                     
             $WERF_ADD_LABEL_1=labelName1=labelValue1, $WERF_ADD_LABEL_2=labelName2=labelValue2)
-      --allowed-volume-usage=80
-            Set allowed percentage of docker storage volume usage which will cause garbage          
-            collection of local docker images (default 80% or $WERF_ALLOWED_VOLUME_USAGE)
-      --allowed-volume-usage-margin=10
-            During garbage collection werf would delete images until volume usage becomes below     
-            "allowed-volume-usage - allowed-volume-usage-margin" level (default 10% or              
-            $WERF_ALLOWED_VOLUME_USAGE_MARGIN)
+      --allowed-docker-storage-volume-usage=70
+            Set allowed percentage of docker storage volume usage which will cause cleanup of least 
+            recently used local docker images (default 70% or                                       
+            $WERF_ALLOWED_DOCKER_STORAGE_VOLUME_USAGE)
+      --allowed-docker-storage-volume-usage-margin=5
+            During cleanup of least recently used local docker images werf would delete images      
+            until volume usage becomes below "allowed-docker-storage-volume-usage -                 
+            allowed-docker-storage-volume-usage-margin" level (default 5% or                        
+            $WERF_ALLOWED_DOCKER_STORAGE_VOLUME_USAGE_MARGIN)
+      --allowed-local-cache-volume-usage=70
+            Set allowed percentage of local cache (~/.werf/local_cache by default) volume usage     
+            which will cause cleanup of least recently used data from the local cache (default 70%  
+            or $WERF_ALLOWED_LOCAL_CACHE_VOLUME_USAGE)
+      --allowed-local-cache-volume-usage-margin=5
+            During cleanup of least recently used local docker images werf would delete images      
+            until volume usage becomes below "allowed-docker-storage-volume-usage -                 
+            allowed-docker-storage-volume-usage-margin" level (default 5% or                        
+            $WERF_ALLOWED_LOCAL_CACHE_VOLUME_USAGE_MARGIN)
       --config=''
             Use custom configuration file (default $WERF_CONFIG or werf.yaml in working directory)
       --config-templates-dir=''
@@ -66,7 +65,7 @@ werf bundle publish [options]
       --dir=''
             Use specified project directory where project’s werf.yaml and other configuration files 
             should reside (default $WERF_DIR or current working directory)
-      --disable-auto-host-cleanup=true
+      --disable-auto-host-cleanup=false
             Disable auto host cleanup procedure in main werf commands like werf-build,              
             werf-converge and other (default disabled or WERF_DISABLE_AUTO_HOST_CLEANUP)
       --docker-config=''
@@ -85,8 +84,6 @@ werf bundle publish [options]
             contains .git in the current or parent directories)
       --home-dir=''
             Use specified dir to store werf cache files and dirs (default $WERF_HOME or ~/.werf)
-      --ignore-secret-key=false
-            Disable secrets decryption (default $WERF_IGNORE_SECRET_KEY)
       --insecure-registry=false
             Use plain HTTP requests when accessing a registry (default $WERF_INSECURE_REGISTRY)
       --introspect-before-error=false
@@ -190,11 +187,6 @@ werf bundle publish [options]
             cache.
             Also, can be specified with $WERF_SECONDARY_REPO_* (e.g. $WERF_SECONDARY_REPO_1=...,    
             $WERF_SECONDARY_REPO_2=...)
-      --secret-values=[]
-            Specify helm secret values in a YAML file (can specify multiple).
-            Also, can be defined with $WERF_SECRET_VALUES_* (e.g.                                   
-            $WERF_SECRET_VALUES_ENV=.helm/secret_values_test.yaml,                                  
-            $WERF_SECRET_VALUES_DB=.helm/secret_values_db.yaml)
       --set=[]
             Set helm values on the command line (can specify multiple or separate values with       
             commas: key1=val1,key2=val2).

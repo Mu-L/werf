@@ -70,8 +70,13 @@ func (wc *WerfChartStub) ChartLoaded(files []*chart.ChartExtenderBufferedFile) e
 		return fmt.Errorf("error getting current process working directory: %s", err)
 	}
 
-	if err := wc.SecretsRuntimeData.DecodeAndLoadSecrets(wc.ChartExtenderContext, files, wc.SecretValueFiles, wc.ChartDir, cwd, wc.SecretsManager); err != nil {
-		return fmt.Errorf("error decoding secrets: %s", err)
+	if wc.SecretsManager != nil {
+		if err := wc.SecretsRuntimeData.DecodeAndLoadSecrets(wc.ChartExtenderContext, files, wc.ChartDir, cwd, wc.SecretsManager, secrets.DecodeAndLoadSecretsOptions{
+			CustomSecretValueFiles:  wc.SecretValueFiles,
+			LoadFromLocalFilesystem: true,
+		}); err != nil {
+			return fmt.Errorf("error decoding secrets: %s", err)
+		}
 	}
 
 	var opts helpers.GetHelmChartMetadataOptions

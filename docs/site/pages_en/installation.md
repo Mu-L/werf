@@ -7,7 +7,6 @@ description: How to install werf?
 versions:
   - 1.2
   - 1.1
-  - 1.0
 channels:
   - alpha
   - beta
@@ -34,8 +33,6 @@ channels:
           data-install-tab-group="version" data-install-tab="1.2">1.2</a>
         <a href="javascript:void(0)" class="tabs__btn"
           data-install-tab-group="version" data-install-tab="1.1">1.1</a>
-        <a href="javascript:void(0)" class="tabs__btn"
-          data-install-tab-group="version" data-install-tab="1.0">1.0</a>
       </div>
     </div><!-- /selector -->
     <div class="installation-selector">
@@ -149,7 +146,7 @@ channels:
       </div><!-- /method -->
       <div class="installation-instruction__tab-content" data-install-content-group="method" data-install-content="binary">
 <div markdown="1">
-The latest release can be found [at this page](https://bintray.com/flant/werf/werf/_latestVersion)
+The latest release can be found [at this page](https://github.com/werf/werf/releases/)
 </div>
         <div class="installation-instruction__tab-content" data-install-content-group="os" data-install-content="linux">
   {% for version in page.versions %}

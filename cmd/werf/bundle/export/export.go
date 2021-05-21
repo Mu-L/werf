@@ -12,8 +12,6 @@ import (
 	"github.com/werf/werf/pkg/git_repo/gitdata"
 	"github.com/werf/werf/pkg/werf/global_warnings"
 
-	"github.com/werf/werf/pkg/deploy/secrets_manager"
-
 	"github.com/werf/werf/pkg/deploy/helm/chart_extender"
 	"github.com/werf/werf/pkg/deploy/helm/chart_extender/helpers"
 	cmd_helm "helm.sh/helm/v3/cmd/helm"
@@ -24,7 +22,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/werf/logboek"
-	"github.com/werf/logboek/pkg/level"
 
 	"github.com/werf/werf/cmd/werf/common"
 	"github.com/werf/werf/pkg/build"
@@ -49,20 +46,17 @@ func NewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:                   "export",
 		Short:                 "Export bundle",
-		Long:                  common.GetLongCommandDescription(`Export bundle into the provided directory (or into directory named as a resulting chart in the current working directory). Werf bundle contains built images defined in the werf.yaml, helm chart, service values which contain built images tags, any custom values and set values params provided during publish invocation, werf addon templates (like werf_image).`),
+		Long:                  common.GetLongCommandDescription(`Export bundle into the provided directory (or into directory named as a resulting chart in the current working directory). werf bundle contains built images defined in the werf.yaml, helm chart, service values which contain built images tags, any custom values and set values params provided during publish invocation, werf addon templates (like werf_image).`),
 		DisableFlagsInUseLine: true,
 		Annotations: map[string]string{
-			common.CmdEnvAnno: common.EnvsDescription(common.WerfDebugAnsibleArgs, common.WerfSecretKey),
+			common.CmdEnvAnno: common.EnvsDescription(),
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := common.BackgroundContext()
 
 			defer global_warnings.PrintGlobalWarnings(ctx)
 
-			logboek.Streams().Mute()
-			logboek.SetAcceptedLevel(level.Error)
-
-			if err := common.ProcessLogOptionsDefaultQuiet(&commonCmdData); err != nil {
+			if err := common.ProcessLogOptions(&commonCmdData); err != nil {
 				common.PrintHelp(cmd)
 				return err
 			}
@@ -109,8 +103,6 @@ func NewCmd() *cobra.Command {
 	common.SetupSetString(&commonCmdData, cmd)
 	common.SetupSetFile(&commonCmdData, cmd)
 	common.SetupValues(&commonCmdData, cmd)
-	common.SetupSecretValues(&commonCmdData, cmd)
-	common.SetupIgnoreSecretKey(&commonCmdData, cmd)
 
 	common.SetupReportPath(&commonCmdData, cmd)
 	common.SetupReportFormat(&commonCmdData, cmd)
@@ -124,8 +116,10 @@ func NewCmd() *cobra.Command {
 	common.SetupSkipBuild(&commonCmdData, cmd)
 
 	common.SetupDisableAutoHostCleanup(&commonCmdData, cmd)
-	common.SetupAllowedVolumeUsage(&commonCmdData, cmd)
-	common.SetupAllowedVolumeUsageMargin(&commonCmdData, cmd)
+	common.SetupAllowedDockerStorageVolumeUsage(&commonCmdData, cmd)
+	common.SetupAllowedDockerStorageVolumeUsageMargin(&commonCmdData, cmd)
+	common.SetupAllowedLocalCacheVolumeUsage(&commonCmdData, cmd)
+	common.SetupAllowedLocalCacheVolumeUsageMargin(&commonCmdData, cmd)
 	common.SetupDockerServerStoragePath(&commonCmdData, cmd)
 
 	cmd.Flags().StringVarP(&cmdData.Destination, "destination", "d", os.Getenv("WERF_DESTINATION"), "Export bundle into the provided directory ($WERF_DESTINATION or chart-name by default)")
@@ -295,10 +289,12 @@ func runExport(ctx context.Context) error {
 		logboek.LogOptionalLn()
 	}
 
-	secretsManager := secrets_manager.NewSecretsManager(secrets_manager.SecretsManagerOptions{DisableSecretsDecryption: *commonCmdData.IgnoreSecretKey})
+	registryClientHandle, err := common.NewHelmRegistryClientHandle(ctx)
+	if err != nil {
+		return fmt.Errorf("unable to create helm registry client: %s", err)
+	}
 
-	wc := chart_extender.NewWerfChart(ctx, giterminismManager, secretsManager, chartDir, cmd_helm.Settings, chart_extender.WerfChartOptions{
-		SecretValueFiles: common.GetSecretValues(&commonCmdData),
+	wc := chart_extender.NewWerfChart(ctx, giterminismManager, nil, chartDir, cmd_helm.Settings, registryClientHandle, chart_extender.WerfChartOptions{
 		ExtraAnnotations: userExtraAnnotations,
 		ExtraLabels:      userExtraLabels,
 	})

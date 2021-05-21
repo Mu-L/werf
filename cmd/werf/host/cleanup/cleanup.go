@@ -56,6 +56,7 @@ It is safe to run this command periodically by automated cleanup job in parallel
 	common.SetupTmpDir(&commonCmdData, cmd)
 	common.SetupHomeDir(&commonCmdData, cmd)
 	common.SetupDockerConfig(&commonCmdData, cmd, "")
+	common.SetupProjectName(&commonCmdData, cmd)
 
 	common.SetupGiterminismOptions(&commonCmdData, cmd)
 
@@ -64,8 +65,10 @@ It is safe to run this command periodically by automated cleanup job in parallel
 	common.SetupDryRun(&commonCmdData, cmd)
 
 	common.SetupDisableAutoHostCleanup(&commonCmdData, cmd)
-	common.SetupAllowedVolumeUsage(&commonCmdData, cmd)
-	common.SetupAllowedVolumeUsageMargin(&commonCmdData, cmd)
+	common.SetupAllowedDockerStorageVolumeUsage(&commonCmdData, cmd)
+	common.SetupAllowedDockerStorageVolumeUsageMargin(&commonCmdData, cmd)
+	common.SetupAllowedLocalCacheVolumeUsage(&commonCmdData, cmd)
+	common.SetupAllowedLocalCacheVolumeUsageMargin(&commonCmdData, cmd)
 	common.SetupDockerServerStoragePath(&commonCmdData, cmd)
 
 	cmd.Flags().BoolVarP(&cmdData.Force, "force", "", common.GetBoolEnvironmentDefaultFalse("WERF_FORCE"), "Force deletion of images which are being used by some containers (default $WERF_FORCE)")
@@ -75,6 +78,11 @@ It is safe to run this command periodically by automated cleanup job in parallel
 
 func runGC() error {
 	ctx := common.BackgroundContext()
+
+	projectName := *commonCmdData.ProjectName
+	if projectName != "" {
+		return fmt.Errorf("no functionality for cleaning a certain project is implemented (--project-name=%s)", projectName)
+	}
 
 	if err := werf.Init(*commonCmdData.TmpDir, *commonCmdData.HomeDir); err != nil {
 		return fmt.Errorf("initialization error: %s", err)
@@ -114,11 +122,13 @@ func runGC() error {
 	logboek.LogOptionalLn()
 
 	hostCleanupOptions := host_cleaning.HostCleanupOptions{
-		AllowedVolumeUsagePercentage:       commonCmdData.AllowedVolumeUsage,
-		AllowedVolumeUsageMarginPercentage: commonCmdData.AllowedVolumeUsageMargin,
-		DryRun:                             *commonCmdData.DryRun,
-		Force:                              cmdData.Force,
-		DockerServerStoragePath:            *commonCmdData.DockerServerStoragePath,
+		DryRun: *commonCmdData.DryRun,
+		Force:  cmdData.Force,
+		AllowedDockerStorageVolumeUsagePercentage:       commonCmdData.AllowedDockerStorageVolumeUsage,
+		AllowedDockerStorageVolumeUsageMarginPercentage: commonCmdData.AllowedDockerStorageVolumeUsageMargin,
+		AllowedLocalCacheVolumeUsagePercentage:          commonCmdData.AllowedLocalCacheVolumeUsage,
+		AllowedLocalCacheVolumeUsageMarginPercentage:    commonCmdData.AllowedLocalCacheVolumeUsageMargin,
+		DockerServerStoragePath:                         *commonCmdData.DockerServerStoragePath,
 	}
 
 	return host_cleaning.RunHostCleanup(ctx, hostCleanupOptions)

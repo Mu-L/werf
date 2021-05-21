@@ -64,9 +64,9 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/theupdateframework/notary v0.6.1 // indirect
 	github.com/tonistiigi/go-rosetta v0.0.0-20200727161949-f79598599c5d // indirect
-	github.com/werf/kubedog v0.4.1-0.20210305081605-676b007fb936
+	github.com/werf/kubedog v0.5.1-0.20210512165540-cb7b6159dc43
 	github.com/werf/lockgate v0.0.0-20200729113342-ec2c142f71ea
-	github.com/werf/logboek v0.5.3
+	github.com/werf/logboek v0.5.4
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
 	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad
@@ -85,7 +85,7 @@ require (
 	k8s.io/helm v2.17.0+incompatible
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.4.0
-	k8s.io/kubectl v0.20.1
+	k8s.io/kubectl v0.20.2
 	mvdan.cc/xurls v1.1.0
 	rsc.io/letsencrypt v0.0.3 // indirect
 	sigs.k8s.io/yaml v1.2.0
@@ -100,4 +100,4 @@ replace k8s.io/helm => github.com/werf/helm v0.0.0-20210202111118-81e74d46da0f
 
 replace github.com/deislabs/oras => github.com/werf/oras v0.8.2-0.20210128161614-26d583f169ea
 
-replace helm.sh/helm/v3 => github.com/werf/helm/v3 v3.0.0-20210309164546-5025d62f56c2
+replace helm.sh/helm/v3 => github.com/werf/helm/v3 v3.0.0-20210330195046-3366eb633f7f

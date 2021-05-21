@@ -15,7 +15,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/werf/logboek"
-	"github.com/werf/logboek/pkg/level"
 
 	"github.com/werf/werf/cmd/werf/common"
 	"github.com/werf/werf/pkg/werf"
@@ -35,15 +34,12 @@ func NewCmd() *cobra.Command {
 		Long:                  common.GetLongCommandDescription(`Take latest bundle from the specified container registry using specified version tag or version mask and unpack it into provided directory (or into directory named as a resulting chart in the current working directory).`),
 		DisableFlagsInUseLine: true,
 		Annotations: map[string]string{
-			common.CmdEnvAnno: common.EnvsDescription(common.WerfDebugAnsibleArgs, common.WerfSecretKey),
+			common.CmdEnvAnno: common.EnvsDescription(),
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			defer global_warnings.PrintGlobalWarnings(common.BackgroundContext())
 
-			logboek.Streams().Mute()
-			logboek.SetAcceptedLevel(level.Error)
-
-			if err := common.ProcessLogOptionsDefaultQuiet(&commonCmdData); err != nil {
+			if err := common.ProcessLogOptions(&commonCmdData); err != nil {
 				common.PrintHelp(cmd)
 				return err
 			}
@@ -95,8 +91,13 @@ func runApply() error {
 
 	cmd_helm.Settings.Debug = *commonCmdData.LogDebug
 
+	registryClientHandle, err := common.NewHelmRegistryClientHandle(ctx)
+	if err != nil {
+		return fmt.Errorf("unable to create helm registry client: %s", err)
+	}
+
 	actionConfig := new(action.Configuration)
-	if err := helm.InitActionConfig(ctx, nil, "", cmd_helm.Settings, actionConfig, helm.InitActionConfigOptions{}); err != nil {
+	if err := helm.InitActionConfig(ctx, nil, "", cmd_helm.Settings, registryClientHandle, actionConfig, helm.InitActionConfigOptions{}); err != nil {
 		return err
 	}
 

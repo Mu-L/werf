@@ -185,7 +185,7 @@ sections:
   - id: dockerfile-image-section
     description:
       en: "Dockerfile image section: optional, define as many image sections as you need"
-      ru: "Cекция Dockerfile image: может использоваться произвольное количество секций"
+      ru: "Секция Dockerfile image: может использоваться произвольное количество секций"
     directives:
       - &dockerfile-image-section-image
         name: image
@@ -207,13 +207,13 @@ sections:
         description:
           en: Build context PATH inside project directory
           ru: Путь к контексту внутри папки проекта
-      - name: contextAddFile
+      - name: contextAddFiles
         value: "[ string, ... ]"
         description:
-          en: Untracked files for adding to build context. The paths must be relative to context PATH
-          ru: Добавление нехранящихся в git файлов в сборочный контекст. Пути должны быть относительно директории контекста
+          en: Untracked files and directories for adding to build context. The paths must be relative to context PATH
+          ru: Добавление нехранящихся в git файлов и директорий в сборочный контекст. Пути должны быть относительно директории контекста
         detailsAnchor:
-          all: "#contextaddfile"
+          all: "#contextaddfiles"
       - name: target
         value: "string"
         description:
@@ -242,7 +242,7 @@ sections:
   - id: stapel-section
     description:
       en: "Stapel image/artifact section: optional, define as many image sections as you need"
-      ru: "Cекция Stapel image/artifact: может использоваться произвольное количество секций"
+      ru: "Секция Stapel image/artifact: может использоваться произвольное количество секций"
     isCollapsedByDefault: true
     directives:
       - << : *dockerfile-image-section-image

@@ -1,7 +1,7 @@
 ---
 title: werf.yaml
 permalink: reference/werf_yaml.html
-description: Werf config file example
+description: werf.yaml config
 toc: false
 ---
 
@@ -19,7 +19,7 @@ Project name should be unique within group of projects that shares build hosts a
 1. Invalidation of build cache. New images must be built. Old images must be cleaned up from local host and container registry manually.
 2. Creation of completely new Helm release. So if you already had deployed your application, then changed project name and deployed it again, there will be created another instance of the same application.
 
-Werf cannot automatically resolve project name change. Described issues must be resolved manually in such case.
+werf cannot automatically resolve project name change. Described issues must be resolved manually in such case.
 
 ## Deploy
 
@@ -86,7 +86,7 @@ deploy:
 
 ### Configuring cleanup policies
 
-The cleanup configuration consists of a set of policies called `keepPolicies`. They are used to select relevant images using the git history. Thus, during a [cleanup]({{ "advanced/cleanup.html#git-history-based-cleanup-algorithm" | true_relative_url }}), __images not meeting the criteria of any policy are deleted__.
+The cleanup configuration consists of a set of policies called `keepPolicies`. They are used to select relevant images using the git history. Thus, during a [cleanup]({{ "advanced/cleanup.html#cleaning-up-outdated-data" | true_relative_url }}), __images not meeting the criteria of any policy are deleted__.
 
 Each policy consists of two parts:
 
@@ -186,7 +186,7 @@ Let us examine each policy individually:
 
 ## Git worktree
 
-Werf stapel builder needs a full git history of the project to perform in the most efficient way. Based on this the default behaviour of the werf is to fetch full history for current git clone worktree when needed. This means werf will automatically convert shallow clone to the full one and download all latest branches and tags from origin during cleanup process. 
+werf stapel builder needs a full git history of the project to perform in the most efficient way. Based on this the default behaviour of the werf is to fetch full history for current git clone worktree when needed. This means werf will automatically convert shallow clone to the full one and download all latest branches and tags from origin during cleanup process. 
 
 Default behaviour described by the following settings:
 
@@ -241,7 +241,7 @@ You will need an image name when setting up helm templates or running werf comma
 
 ### Dockerfile builder
 
-Werf supports building images using Dockerfile. Building an image from Dockerfile is the easiest way to start using werf in an existing project.
+werf supports building images using Dockerfile. Building an image from Dockerfile is the easiest way to start using werf in an existing project.
 
 `werf.yaml` below describes an unnamed image built from `Dockerfile` which reside in the root of the project dir:
 
@@ -277,28 +277,29 @@ dockerfile: frontend/Dockerfile
 context: frontend/
 ```
 
-#### contextAddFile
+#### contextAddFiles
 
 The build context consists of the files from a directory, defined by `context` directive (the project directory by default), from the current project git repository commit.
 
-The `contextAddFile` directive allows adding an arbitrary file from the project directory to the build context.
+The `contextAddFiles` directive allows adding of arbitrary files or directories from the project directory to the build context.
 
 ```yaml
 image: app
 context: app
-contextAddFile:
+contextAddFiles:
  - file1
- - dir/file2.out
+ - dir1/
+ - dir2/file2.out
 ```
 
 The configuration describes the build context that consists of the following files:
 
 - `app/**/*`  from the current project git repository commit;
-- `app/file1` and `app/dir/file2.out` from the project directory.
+- Files `app/file1`, `app/dir2/file2.out` and directory `dir1` from the project directory.
 
-The `contextAddFile` files have a higher priority than the files from the current project git repository commit. When these files are crossing, the user will work with files from the project directory.
+The `contextAddFiles` files have a higher priority than the files from the current project git repository commit. When these files are crossing, the user will work with files from the project directory.
 
-> By default, the use of the `contextAddFile` directive is not allowed by giterminism (read more about it [here]({{ "/advanced/giterminism.html#contextaddfile" | true_relative_url }}))
+> By default, the use of the `contextAddFiles` directive is not allowed by giterminism (read more about it [here]({{ "/advanced/giterminism.html#contextaddfiles" | true_relative_url }}))
 
 ### Stapel builder
 

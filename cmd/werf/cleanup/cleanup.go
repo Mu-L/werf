@@ -15,7 +15,6 @@ import (
 	"github.com/werf/werf/pkg/git_repo"
 	"github.com/werf/werf/pkg/git_repo/gitdata"
 	"github.com/werf/werf/pkg/image"
-	"github.com/werf/werf/pkg/storage"
 	"github.com/werf/werf/pkg/storage/lrumeta"
 	"github.com/werf/werf/pkg/storage/manager"
 	"github.com/werf/werf/pkg/tmp_manager"
@@ -30,8 +29,8 @@ func NewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:                   "cleanup",
 		DisableFlagsInUseLine: true,
-		Short:                 "Cleanup project images",
-		Long: common.GetLongCommandDescription(`Safely cleanup unused project images.
+		Short:                 "Cleanup project images in the container registry",
+		Long: common.GetLongCommandDescription(`Safely cleanup unused project images in the container registry.
 
 The command works according to special rules called cleanup policies, which the user defines in werf.yaml (https://werf.io/documentation/reference/werf_yaml.html#configuring-cleanup-policies).
 
@@ -87,8 +86,10 @@ It is safe to run this command periodically (daily is enough) by automated clean
 	common.SetupKeepStagesBuiltWithinLastNHours(&commonCmdData, cmd)
 
 	common.SetupDisableAutoHostCleanup(&commonCmdData, cmd)
-	common.SetupAllowedVolumeUsage(&commonCmdData, cmd)
-	common.SetupAllowedVolumeUsageMargin(&commonCmdData, cmd)
+	common.SetupAllowedDockerStorageVolumeUsage(&commonCmdData, cmd)
+	common.SetupAllowedDockerStorageVolumeUsageMargin(&commonCmdData, cmd)
+	common.SetupAllowedLocalCacheVolumeUsage(&commonCmdData, cmd)
+	common.SetupAllowedLocalCacheVolumeUsageMargin(&commonCmdData, cmd)
 	common.SetupDockerServerStoragePath(&commonCmdData, cmd)
 
 	return cmd
@@ -188,7 +189,13 @@ func runCleanup(ctx context.Context) error {
 
 	containerRuntime := &container_runtime.LocalDockerServerRuntime{} // TODO
 
-	stagesStorageAddress := common.GetOptionalStagesStorageAddress(&commonCmdData)
+	stagesStorageAddress, err := common.GetStagesStorageAddress(&commonCmdData)
+	if err != nil {
+		logboek.Context(ctx).Default().LogLnDetails(`The "werf cleanup" command is only used to cleaning the container registry. In case you need to clean the runner or the localhost, use the commands of the "werf host" group. 
+It is worth noting that auto-cleaning is enabled by default, and manual use is usually not required (if not, we would appreciate feedback and creating an issue https://github.com/werf/werf/issues/new).`)
+
+		return err
+	}
 	stagesStorage, err := common.GetStagesStorage(stagesStorageAddress, containerRuntime, &commonCmdData)
 	if err != nil {
 		return err
@@ -213,7 +220,7 @@ func runCleanup(ctx context.Context) error {
 
 	storageManager := manager.NewStorageManager(projectName, stagesStorage, secondaryStagesStorageList, storageLockManager, stagesStorageCache)
 
-	if stagesStorage.Address() != storage.LocalStorageAddress && *commonCmdData.Parallel {
+	if *commonCmdData.Parallel {
 		storageManager.StagesStorageManager.EnableParallel(int(*commonCmdData.ParallelTasksLimit))
 	}
 

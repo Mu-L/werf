@@ -15,7 +15,6 @@ import (
 	"helm.sh/helm/v3/pkg/cli/values"
 
 	"github.com/werf/logboek"
-	"github.com/werf/logboek/pkg/level"
 
 	"github.com/werf/werf/cmd/werf/common"
 	"github.com/werf/werf/pkg/build"
@@ -58,10 +57,7 @@ func NewCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			defer global_warnings.PrintGlobalWarnings(common.BackgroundContext())
 
-			logboek.Streams().Mute()
-			logboek.SetAcceptedLevel(level.Error)
-
-			if err := common.ProcessLogOptionsDefaultQuiet(&commonCmdData); err != nil {
+			if err := common.ProcessLogOptions(&commonCmdData); err != nil {
 				common.PrintHelp(cmd)
 				return err
 			}
@@ -305,7 +301,12 @@ func runRender() error {
 
 	secretsManager := secrets_manager.NewSecretsManager(secrets_manager.SecretsManagerOptions{DisableSecretsDecryption: *commonCmdData.IgnoreSecretKey})
 
-	wc := chart_extender.NewWerfChart(ctx, giterminismManager, secretsManager, chartDir, cmd_helm.Settings, chart_extender.WerfChartOptions{
+	registryClientHandler, err := common.NewHelmRegistryClientHandle(ctx)
+	if err != nil {
+		return fmt.Errorf("unable to create helm registry client: %s", err)
+	}
+
+	wc := chart_extender.NewWerfChart(ctx, giterminismManager, secretsManager, chartDir, cmd_helm.Settings, registryClientHandler, chart_extender.WerfChartOptions{
 		SecretValueFiles: common.GetSecretValues(&commonCmdData),
 		ExtraAnnotations: userExtraAnnotations,
 		ExtraLabels:      userExtraLabels,
@@ -331,7 +332,7 @@ func runRender() error {
 	}
 
 	actionConfig := new(action.Configuration)
-	if err := helm.InitActionConfig(ctx, nil, namespace, cmd_helm.Settings, actionConfig, helm.InitActionConfigOptions{}); err != nil {
+	if err := helm.InitActionConfig(ctx, nil, namespace, cmd_helm.Settings, registryClientHandler, actionConfig, helm.InitActionConfigOptions{}); err != nil {
 		return err
 	}
 

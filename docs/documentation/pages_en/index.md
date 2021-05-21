@@ -3,9 +3,12 @@ title: Overview
 without_auto_heading: true
 permalink: index.html
 description: Extensive and clear werf documentation
+editme_button: false
 ---
 
 <link rel="stylesheet" type="text/css" href="{{ assets["overview.css"].digest_path | true_relative_url }}" />
+<link rel="stylesheet" type="text/css" href="/css/guides.css" />
+
 
 <div class="overview">
     <div class="overview__title">Must-Read</div>
@@ -55,7 +58,7 @@ description: Extensive and clear werf documentation
             Find a guide suitable for your project (filter by a programming language, framework, CI/CD system, etc.) and deploy your first real application into the Kubernetes cluster with werf.
         </div>
     </div>
-    <!--#include virtual="/includes/guides-tiles.html" -->
+    <!--#include virtual="/guides/includes/landing-tiles.html" -->
     <div class="overview__title">Reference</div>
     <div class="overview__step">
         <div class="overview__step-title">Use Reference for structured information about werf configuration and commands</div>

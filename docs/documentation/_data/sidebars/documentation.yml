@@ -65,6 +65,9 @@ cli: &cli
       - title: werf compose down
         url: /reference/cli/werf_compose_down.html
 
+      - title: werf compose run
+        url: /reference/cli/werf_compose_run.html
+
       - title: werf compose up
         url: /reference/cli/werf_compose_up.html
 
@@ -103,15 +106,6 @@ cli: &cli
 
       - title: werf host cleanup
         url: /reference/cli/werf_host_cleanup.html
-
-      - title: werf host project
-        f:
-
-        - title: werf host project list
-          url: /reference/cli/werf_host_project_list.html
-
-        - title: werf host project purge
-          url: /reference/cli/werf_host_project_purge.html
 
       - title: werf host purge
         url: /reference/cli/werf_host_purge.html
@@ -220,6 +214,15 @@ cli: &cli
 
       - title: werf helm pull
         url: /reference/cli/werf_helm_pull.html
+
+      - title: werf helm registry
+        f:
+
+        - title: werf helm registry login
+          url: /reference/cli/werf_helm_registry_login.html
+
+        - title: werf helm registry logout
+          url: /reference/cli/werf_helm_registry_logout.html
 
       - title: werf helm repo
         f:
@@ -613,7 +616,7 @@ entries:
           - title: Очистка
             url: /advanced/cleanup.html
 
-          - title: Bundles
+          - title: Бандлы
             url: /advanced/bundles.html
 
           - title: CI/CD

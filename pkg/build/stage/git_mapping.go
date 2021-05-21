@@ -100,12 +100,88 @@ func (gm *GitMapping) GitRepo() git_repo.GitRepo {
 	panic("GitRepo not initialized")
 }
 
+func (gm *GitMapping) makeArchiveOptions(ctx context.Context, commit string) (*git_repo.ArchiveOptions, error) {
+	fileRenames, err := gm.getFileRenames(ctx, commit)
+	if err != nil {
+		return nil, fmt.Errorf("unable to make git archive options: %s", err)
+	}
+
+	pathScope, err := gm.getPathScope(ctx, commit)
+	if err != nil {
+		return nil, fmt.Errorf("unable to make git archive options: %s", err)
+	}
+
+	return &git_repo.ArchiveOptions{
+		PathScope:   pathScope,
+		PathMatcher: gm.getPathMatcher(),
+		Commit:      commit,
+		FileRenames: fileRenames,
+	}, nil
+}
+
+func (gm *GitMapping) makePatchOptions(ctx context.Context, fromCommit, toCommit string, withEntireFileContext, withBinary bool) (*git_repo.PatchOptions, error) {
+	fileRenames, err := gm.getFileRenames(ctx, toCommit)
+	if err != nil {
+		return nil, fmt.Errorf("unable to make git patch options: %s", err)
+	}
+
+	pathScope, err := gm.getPathScope(ctx, toCommit)
+	if err != nil {
+		return nil, fmt.Errorf("unable to make git patch options: %s", err)
+	}
+
+	return &git_repo.PatchOptions{
+		PathScope:             pathScope,
+		PathMatcher:           gm.getPathMatcher(),
+		FromCommit:            fromCommit,
+		ToCommit:              toCommit,
+		FileRenames:           fileRenames,
+		WithEntireFileContext: withEntireFileContext,
+		WithBinary:            withBinary,
+	}, nil
+}
+
 func (gm *GitMapping) getPathMatcher() path_matcher.PathMatcher {
 	return path_matcher.NewPathMatcher(path_matcher.PathMatcherOptions{
 		BasePath:     gm.Add,
 		IncludeGlobs: gm.IncludePaths,
 		ExcludeGlobs: gm.ExcludePaths,
 	})
+}
+
+func (gm *GitMapping) getPathScope(ctx context.Context, commit string) (string, error) {
+	var pathScope string
+
+	gitAddIsDirOrSubmodule, err := gm.GitRepo().IsCommitTreeEntryDirectory(ctx, commit, gm.Add)
+	if err != nil {
+		return "", fmt.Errorf("unable to determine whether ls tree entry for path %q on commit %q is directory or not: %s", gm.Add, commit, err)
+	}
+
+	if gitAddIsDirOrSubmodule {
+		pathScope = gm.Add
+	} else {
+		pathScope = filepath.ToSlash(filepath.Dir(gm.Add))
+	}
+
+	return pathScope, nil
+}
+
+func (gm *GitMapping) getFileRenames(ctx context.Context, commit string) (map[string]string, error) {
+	gitAddIsDirOrSubmodule, err := gm.GitRepo().IsCommitTreeEntryDirectory(ctx, commit, gm.Add)
+	if err != nil {
+		return nil, fmt.Errorf("unable to determine whether ls tree entry for path %q on commit %q is directory or not: %s", gm.Add, commit, err)
+	}
+
+	fileRenames := make(map[string]string)
+	if gitAddIsDirOrSubmodule {
+		return fileRenames, nil
+	}
+
+	if filepath.Base(gm.Add) != filepath.Base(gm.To) {
+		fileRenames[gm.Add] = filepath.Base(gm.To)
+	}
+
+	return fileRenames, nil
 }
 
 func (gm *GitMapping) IsLocal() bool {
@@ -344,14 +420,12 @@ func (gm *GitMapping) VirtualMergeIntoCommitLabel() string {
 func (gm *GitMapping) baseApplyPatchCommand(ctx context.Context, fromCommit, toCommit string, prevBuiltImage container_runtime.ImageInterface) ([]string, error) {
 	archiveType := git_repo.ArchiveType(prevBuiltImage.GetStageDescription().Info.Labels[gm.getArchiveTypeLabelName()])
 
-	patchOpts := git_repo.PatchOptions{
-		PathScope:   gm.Add,
-		PathMatcher: gm.getPathMatcher(),
-		FromCommit:  fromCommit,
-		ToCommit:    toCommit,
+	patchOpts, err := gm.makePatchOptions(ctx, fromCommit, toCommit, false, false)
+	if err != nil {
+		return nil, err
 	}
 
-	patch, err := gm.GitRepo().GetOrCreatePatch(ctx, patchOpts)
+	patch, err := gm.GitRepo().GetOrCreatePatch(ctx, *patchOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -422,13 +496,12 @@ func (gm *GitMapping) baseApplyPatchCommand(ctx context.Context, fromCommit, toC
 			}
 		}
 
-		archiveOpts := git_repo.ArchiveOptions{
-			PathScope:   gm.Add,
-			PathMatcher: gm.getPathMatcher(),
-			Commit:      toCommit,
+		archiveOpts, err := gm.makeArchiveOptions(ctx, toCommit)
+		if err != nil {
+			return nil, err
 		}
 
-		archive, err := gm.GitRepo().GetOrCreateArchive(ctx, archiveOpts)
+		archive, err := gm.GitRepo().GetOrCreateArchive(ctx, *archiveOpts)
 		if err != nil {
 			return nil, err
 		}
@@ -443,7 +516,10 @@ func (gm *GitMapping) baseApplyPatchCommand(ctx context.Context, fromCommit, toC
 			return nil, fmt.Errorf("cannot prepare archive file: %s", err)
 		}
 
-		archiveType := archive.GetType()
+		archiveType, err := gm.getArchiveType(ctx, toCommit)
+		if err != nil {
+			return nil, err
+		}
 
 		applyArchiveCommands, err := gm.applyArchiveCommand(archiveFile, archiveType)
 		if err != nil {
@@ -544,13 +620,12 @@ func (gm *GitMapping) applyScript(image container_runtime.ImageInterface, comman
 }
 
 func (gm *GitMapping) baseApplyArchiveCommand(ctx context.Context, commit string, image container_runtime.ImageInterface) ([]string, error) {
-	archiveOpts := git_repo.ArchiveOptions{
-		PathScope:   gm.Add,
-		PathMatcher: gm.getPathMatcher(),
-		Commit:      commit,
+	archiveOpts, err := gm.makeArchiveOptions(ctx, commit)
+	if err != nil {
+		return nil, err
 	}
 
-	archive, err := gm.GitRepo().GetOrCreateArchive(ctx, archiveOpts)
+	archive, err := gm.GitRepo().GetOrCreateArchive(ctx, *archiveOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -564,7 +639,10 @@ func (gm *GitMapping) baseApplyArchiveCommand(ctx context.Context, commit string
 		return nil, fmt.Errorf("cannot prepare archive file: %s", err)
 	}
 
-	archiveType := archive.GetType()
+	archiveType, err := gm.getArchiveType(ctx, commit)
+	if err != nil {
+		return nil, err
+	}
 
 	commands, err := gm.applyArchiveCommand(archiveFile, archiveType)
 	if err != nil {
@@ -638,16 +716,12 @@ func (gm *GitMapping) PatchSize(ctx context.Context, c Conveyor, fromCommit stri
 		return 0, nil
 	}
 
-	patchOpts := git_repo.PatchOptions{
-		PathScope:             gm.Add,
-		PathMatcher:           gm.getPathMatcher(),
-		FromCommit:            fromCommit,
-		ToCommit:              toCommitInfo.Commit,
-		WithEntireFileContext: true,
-		WithBinary:            true,
+	patchOpts, err := gm.makePatchOptions(ctx, fromCommit, toCommitInfo.Commit, true, true)
+	if err != nil {
+		return 0, err
 	}
 
-	patch, err := gm.GitRepo().GetOrCreatePatch(ctx, patchOpts)
+	patch, err := gm.GitRepo().GetOrCreatePatch(ctx, *patchOpts)
 	if err != nil {
 		return 0, err
 	}
@@ -677,11 +751,11 @@ func (gm *GitMapping) GetParamshash() string {
 	parts = append(parts, ":::")
 	parts = append(parts, gm.To)
 	parts = append(parts, ":::")
-	parts = append(parts, formatParamshashPaths(gm.Add)...)
+	parts = append(parts, gm.Add)
 	parts = append(parts, ":::")
-	parts = append(parts, formatParamshashPaths(gm.IncludePaths...)...)
+	parts = append(parts, gm.IncludePaths...)
 	parts = append(parts, ":::")
-	parts = append(parts, formatParamshashPaths(gm.ExcludePaths...)...)
+	parts = append(parts, gm.ExcludePaths...)
 	parts = append(parts, ":::")
 	parts = append(parts, gm.Owner)
 	parts = append(parts, ":::")
@@ -703,15 +777,6 @@ func (gm *GitMapping) GetParamshash() string {
 	return fmt.Sprintf("%x", hash.Sum(nil))
 }
 
-func formatParamshashPaths(paths ...string) []string {
-	var resultPaths []string
-	for _, p := range paths {
-		resultPaths = append(resultPaths, filepath.ToSlash(p))
-	}
-
-	return resultPaths
-}
-
 func (gm *GitMapping) GetPatchContent(ctx context.Context, c Conveyor, prevBuiltImage container_runtime.ImageInterface) (string, error) {
 	fromCommit, err := gm.GetBaseCommitForPrevBuiltImage(ctx, c, prevBuiltImage)
 	if err != nil {
@@ -727,13 +792,12 @@ func (gm *GitMapping) GetPatchContent(ctx context.Context, c Conveyor, prevBuilt
 		return "", nil
 	}
 
-	patchOpts := git_repo.PatchOptions{
-		PathScope:   gm.Add,
-		PathMatcher: gm.getPathMatcher(),
-		FromCommit:  fromCommit,
-		ToCommit:    toCommitInfo.Commit,
+	patchOpts, err := gm.makePatchOptions(ctx, fromCommit, toCommitInfo.Commit, false, false)
+	if err != nil {
+		return "", err
 	}
-	patch, err := gm.GitRepo().GetOrCreatePatch(ctx, patchOpts)
+
+	patch, err := gm.GitRepo().GetOrCreatePatch(ctx, *patchOpts)
 	if err != nil {
 		return "", err
 	}
@@ -764,14 +828,12 @@ func (gm *GitMapping) baseIsPatchEmpty(ctx context.Context, fromCommit, toCommit
 		return true, nil
 	}
 
-	patchOpts := git_repo.PatchOptions{
-		PathScope:   gm.Add,
-		PathMatcher: gm.getPathMatcher(),
-		FromCommit:  fromCommit,
-		ToCommit:    toCommit,
+	patchOpts, err := gm.makePatchOptions(ctx, fromCommit, toCommit, false, false)
+	if err != nil {
+		return false, err
 	}
 
-	patch, err := gm.GitRepo().GetOrCreatePatch(ctx, patchOpts)
+	patch, err := gm.GitRepo().GetOrCreatePatch(ctx, *patchOpts)
 	if err != nil {
 		return false, err
 	}
@@ -785,17 +847,12 @@ func (gm *GitMapping) IsEmpty(ctx context.Context, c Conveyor) (bool, error) {
 		return false, fmt.Errorf("unable to get latest commit info: %s", err)
 	}
 
-	archiveOpts := git_repo.ArchiveOptions{
-		PathScope:   gm.Add,
-		PathMatcher: gm.getPathMatcher(),
-		Commit:      commitInfo.Commit,
-	}
-
-	archive, err := gm.GitRepo().GetOrCreateArchive(ctx, archiveOpts)
+	archiveOpts, err := gm.makeArchiveOptions(ctx, commitInfo.Commit)
 	if err != nil {
 		return false, err
 	}
 
+	archive, err := gm.GitRepo().GetOrCreateArchive(ctx, *archiveOpts)
 	return archive.IsEmpty(), nil
 }
 
@@ -874,4 +931,17 @@ func (gm *GitMapping) makeCredentialsOpts() string {
 
 func (gm *GitMapping) getArchiveTypeLabelName() string {
 	return fmt.Sprintf("werf-git-%s-type", gm.GetParamshash())
+}
+
+func (gm *GitMapping) getArchiveType(ctx context.Context, commit string) (git_repo.ArchiveType, error) {
+	archiveTypeIsDirectory, err := gm.GitRepo().IsCommitTreeEntryDirectory(ctx, commit, gm.Add)
+	if err != nil {
+		return "", fmt.Errorf("unable to determine git mapping archive type for commit %q: %s", commit, err)
+	}
+
+	if archiveTypeIsDirectory {
+		return git_repo.DirectoryArchive, nil
+	}
+
+	return git_repo.FileArchive, nil
 }

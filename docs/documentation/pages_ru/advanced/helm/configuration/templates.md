@@ -54,7 +54,7 @@ kind: ConfigMap
 
 Ресурсы kubernetes требуют полное имя docker образа, включая Docker-репозиторий и Docker-тег, чтобы использовать Docker-образы в шаблонах чарта. Но как указать данные образа из файла конфигурации `werf.yaml` учитывая то, что полное имя Docker-образа зависит от указанного Docker-репозитория?
 
-Werf предоставляет набор сервисных значений, которые содержат маппинг `.Values.werf.image`. В этом маппинге по имени образа из `werf.yaml` содержится полное имя docker-образа. Полное описание сервисных значений werf доступно [в статье про values]({{ "/advanced/helm/configuration/values.html" | true_relative_url }}).
+werf предоставляет набор сервисных значений, которые содержат маппинг `.Values.werf.image`. В этом маппинге по имени образа из `werf.yaml` содержится полное имя docker-образа. Полное описание сервисных значений werf доступно [в статье про values]({{ "/advanced/helm/configuration/values.html" | true_relative_url }}).
 
 ### .Values.werf.image
 
@@ -110,7 +110,7 @@ spec:
 
 {% raw %}
  * `{{ .Chart.Name }}` — возвращает имя проекта, указанное в `werf.yaml` (ключ `project`).
- * `{{ .Release.Name }}` — возвращает [имя релиза]({{ "/advanced/helm/releases/release.html" | true_relative_url }}).
+ * `{{ .Release.Name }}` — {% endraw %}возвращает [имя релиза]({{ "/advanced/helm/releases/release.html" | true_relative_url }}).{% raw %}
  * `{{ .Files.Get }}` — функция для получения содержимого файла в шаблон, требует указания пути к файлу в качестве аргумента. Путь указывается относительно папки `.helm` (файлы вне папки `.helm` недоступны).
 {% endraw %}
 

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	helm_v3 "helm.sh/helm/v3/cmd/helm"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 
@@ -23,7 +24,7 @@ type BuildChartDependenciesOptions struct {
 	LoadOptions *loader.LoadOptions
 }
 
-func BuildChartDependenciesInDir(ctx context.Context, chartFile *chart.ChartExtenderBufferedFile, chartLockFile *chart.ChartExtenderBufferedFile, requirementsFile *chart.ChartExtenderBufferedFile, requirementsLockFile *chart.ChartExtenderBufferedFile, targetDir string, helmEnvSettings *cli.EnvSettings, opts BuildChartDependenciesOptions) error {
+func BuildChartDependenciesInDir(ctx context.Context, chartFile *chart.ChartExtenderBufferedFile, chartLockFile *chart.ChartExtenderBufferedFile, requirementsFile *chart.ChartExtenderBufferedFile, requirementsLockFile *chart.ChartExtenderBufferedFile, targetDir string, helmEnvSettings *cli.EnvSettings, registryClientHandle *helm_v3.RegistryClientHandle, opts BuildChartDependenciesOptions) error {
 	logboek.Context(ctx).Debug().LogF("-- BuildChartDependenciesInDir\n")
 
 	if err := os.MkdirAll(targetDir, os.ModePerm); err != nil {
@@ -51,6 +52,7 @@ func BuildChartDependenciesInDir(ctx context.Context, chartFile *chart.ChartExte
 		Verify:     opts.Verify,
 
 		Getters:          getter.All(helmEnvSettings),
+		RegistryClient:   registryClientHandle.RegistryClient,
 		RepositoryConfig: helmEnvSettings.RepositoryConfig,
 		RepositoryCache:  helmEnvSettings.RepositoryCache,
 		Debug:            helmEnvSettings.Debug,
@@ -63,9 +65,10 @@ func BuildChartDependenciesInDir(ctx context.Context, chartFile *chart.ChartExte
 	}()
 
 	err := man.Build()
+
 	if e, ok := err.(downloader.ErrRepoNotFound); ok {
 		return fmt.Errorf("%s. Please add the missing repos via 'helm repo add'", e.Error())
 	}
 
-	return nil
+	return err
 }

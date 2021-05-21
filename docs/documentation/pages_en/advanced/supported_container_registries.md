@@ -24,6 +24,7 @@ werf tries to automatically detect the type of container registry using the repo
 | _JFrog Artifactory_                       | **ok** |         **ok**    |         **ok**                                      |
 | _Nexus_                                   | **ok** |   **not tested**  |         **ok**                                      |
 | _Quay_                                    | **ok** | **not supported** |         **ok**                                      |
+| _Yandex Container Registry_               | **ok** |   **not tested**  |         **ok**                                      |
 
 ## Authorization
 
@@ -72,14 +73,14 @@ You can use the following script to get a _token_:
 ```shell
 HUB_USERNAME=username
 HUB_PASSWORD=password
-HUB_TOKEN=$(curl -s -H "Content-Type: application/json" -X POST -d '{"username": "'${HUB_USERNAME}'", "password": "'${HUB_PASSWORD}'"}' https://hub.docker.com/v2/users/login/ | jq -r .tокen)
+HUB_TOKEN=$(curl -s -H "Content-Type: application/json" -X POST -d '{"username": "'${HUB_USERNAME}'", "password": "'${HUB_PASSWORD}'"}' https://hub.docker.com/v2/users/login/ | jq -r .token)
 ```
 
 > You can't use the [personal access token](https://docs.docker.com/docker-hub/access-tokens/) as a _token_ since the deletion of resources is only possible using the user's primary credentials.
 
 You can use the following options (or their respective environment variables) to set the said parameters:
 
-- `-- repo-docker-hub-token`, or
+- `-- repo-docker-hub-token` or
 - `--repo-docker-hub-username` and `--repo-docker-hub-password`.
 
 ### GitHub Packages (docker.pkg.github.com)

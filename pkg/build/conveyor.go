@@ -15,7 +15,7 @@ import (
 
 	"github.com/gookit/color"
 
-	"github.com/docker/docker/builder/dockerignore"
+	"github.com/moby/buildkit/frontend/dockerfile/dockerignore"
 	"github.com/moby/buildkit/frontend/dockerfile/instructions"
 	"github.com/moby/buildkit/frontend/dockerfile/parser"
 
@@ -201,6 +201,18 @@ func (c *Conveyor) GetImportServer(ctx context.Context, imageName, stageName str
 	}
 
 	var srv *import_server.RsyncServer
+
+	var stg stage.Interface
+
+	if stageName != "" {
+		stg = c.getImageStage(imageName, stageName)
+	} else {
+		stg = c.GetImage(imageName).GetLastNonEmptyStage()
+	}
+
+	if err := c.StorageManager.FetchStage(ctx, stg); err != nil {
+		return nil, fmt.Errorf("unable to fetch stage %s: %s", stg.GetImage().Name(), err)
+	}
 
 	if err := logboek.Context(ctx).Info().LogProcess(fmt.Sprintf("Firing up import rsync server for image %s", imageName)).
 		DoError(func() error {
@@ -502,15 +514,13 @@ func (c *Conveyor) doImagesInParallel(ctx context.Context, phases []Phase, logIm
 		})
 
 	for setId := range c.imageSets {
-		logboek.Context(ctx).LogLn()
-
 		numberOfTasks := len(c.imageSets[setId])
 		numberOfWorkers := int(c.ParallelTasksLimit)
 
 		if err := parallel.DoTasks(ctx, numberOfTasks, parallel.DoTasksOptions{
 			InitDockerCLIForEachWorker: true,
 			MaxNumberOfWorkers:         numberOfWorkers,
-			IsLiveOutputOn:             true,
+			LiveOutput:                 true,
 		}, func(ctx context.Context, taskId int) error {
 			taskImage := c.imageSets[setId][taskId]
 
@@ -743,17 +753,18 @@ func getImageConfigsToProcess(ctx context.Context, c *Conveyor) []config.ImageIn
 		imageConfigsToProcess = c.werfConfig.GetAllImages()
 	} else {
 		for _, imageName := range c.imageNamesToProcess {
+			if !c.werfConfig.HasImageOrArtifact(imageName) {
+				logboek.Context(ctx).Warn().LogF("WARNING: Specified image %s isn't defined in werf.yaml!\n", imageName)
+				continue
+			}
+
 			var imageToProcess config.ImageInterface
 			imageToProcess = c.werfConfig.GetImage(imageName)
 			if imageToProcess == nil {
 				imageToProcess = c.werfConfig.GetArtifact(imageName)
 			}
 
-			if imageToProcess == nil {
-				logboek.Context(ctx).Warn().LogF("WARNING: Specified image %s isn't defined in werf.yaml!\n", imageName)
-			} else {
-				imageConfigsToProcess = append(imageConfigsToProcess, imageToProcess)
-			}
+			imageConfigsToProcess = append(imageConfigsToProcess, imageToProcess)
 		}
 	}
 
@@ -1017,7 +1028,7 @@ func gitLocalPathInit(localGitMappingConfig *config.GitLocal, imageName string, 
 func baseGitMappingInit(local *config.GitLocalExport, imageName string, c *Conveyor) *stage.GitMapping {
 	var stageDependencies map[stage.StageName][]string
 	if local.StageDependencies != nil {
-		stageDependencies = stageDependenciesToMap(local.GitMappingStageDependencies())
+		stageDependencies = stageDependenciesToMap(local.StageDependencies)
 	}
 
 	gitMapping := stage.NewGitMapping()
@@ -1029,8 +1040,8 @@ func baseGitMappingInit(local *config.GitLocalExport, imageName string, c *Conve
 
 	gitMapping.Add = local.GitMappingAdd()
 	gitMapping.To = local.GitMappingTo()
-	gitMapping.ExcludePaths = local.GitMappingExcludePath()
-	gitMapping.IncludePaths = local.GitMappingIncludePaths()
+	gitMapping.ExcludePaths = local.ExcludePaths
+	gitMapping.IncludePaths = local.IncludePaths
 	gitMapping.Owner = local.Owner
 	gitMapping.Group = local.Group
 	gitMapping.StagesDependencies = stageDependencies
@@ -1078,7 +1089,7 @@ func prepareImageBasedOnImageFromDockerfile(ctx context.Context, imageFromDocker
 	img.name = imageFromDockerfileConfig.Name
 	img.isDockerfileImage = true
 
-	for _, contextAddFile := range imageFromDockerfileConfig.ContextAddFile {
+	for _, contextAddFile := range imageFromDockerfileConfig.ContextAddFiles {
 		relContextAddFile := filepath.Join(imageFromDockerfileConfig.Context, contextAddFile)
 		absContextAddFile := filepath.Join(c.projectDir, relContextAddFile)
 		exist, err := util.FileExists(absContextAddFile)
@@ -1097,20 +1108,28 @@ func prepareImageBasedOnImageFromDockerfile(ctx context.Context, imageFromDocker
 		return nil, err
 	}
 
+	var relDockerignorePath string
 	var dockerignorePatterns []string
-	relDockerignorePath := filepath.Join(imageFromDockerfileConfig.Context, ".dockerignore")
-	if exist, err := c.giterminismManager.FileReader().IsDockerignoreExistAnywhere(ctx, relDockerignorePath); err != nil {
-		return nil, err
-	} else if exist {
-		dockerignoreData, err := c.giterminismManager.FileReader().ReadDockerignore(ctx, relDockerignorePath)
-		if err != nil {
+	for _, relContextDockerignorePath := range []string{
+		imageFromDockerfileConfig.Dockerfile + ".dockerignore",
+		".dockerignore",
+	} {
+		relDockerignorePath = filepath.Join(imageFromDockerfileConfig.Context, relContextDockerignorePath)
+		if exist, err := c.giterminismManager.FileReader().IsDockerignoreExistAnywhere(ctx, relDockerignorePath); err != nil {
 			return nil, err
-		}
+		} else if exist {
+			dockerignoreData, err := c.giterminismManager.FileReader().ReadDockerignore(ctx, relDockerignorePath)
+			if err != nil {
+				return nil, err
+			}
 
-		r := bytes.NewReader(dockerignoreData)
-		dockerignorePatterns, err = dockerignore.ReadAll(r)
-		if err != nil {
-			return nil, fmt.Errorf("unable to read .dockerignore file: %s", err)
+			r := bytes.NewReader(dockerignoreData)
+			dockerignorePatterns, err = dockerignore.ReadAll(r)
+			if err != nil {
+				return nil, fmt.Errorf("unable to read %q file: %s", relContextDockerignorePath, err)
+			}
+
+			break
 		}
 	}
 
@@ -1118,6 +1137,18 @@ func prepareImageBasedOnImageFromDockerfile(ctx context.Context, imageFromDocker
 		BasePath:             filepath.Join(c.GiterminismManager().RelativeToGitProjectDir(), imageFromDockerfileConfig.Context),
 		DockerignorePatterns: dockerignorePatterns,
 	})
+
+	if !dockerignorePathMatcher.IsPathMatched(relDockerfilePath) {
+		exceptionRule := "!" + imageFromDockerfileConfig.Dockerfile
+		logboek.Context(ctx).Warn().LogLn("WARNING: There is no way to ignore the Dockerfile due to docker limitation when building an image for a compressed context that reads from STDIN.")
+		logboek.Context(ctx).Warn().LogF("WARNING: To hide this message, remove the Dockerfile ignore rule from the %q or add an exception rule %q.\n", relDockerignorePath, exceptionRule)
+
+		dockerignorePatterns = append(dockerignorePatterns, exceptionRule)
+		dockerignorePathMatcher = path_matcher.NewPathMatcher(path_matcher.PathMatcherOptions{
+			BasePath:             filepath.Join(c.GiterminismManager().RelativeToGitProjectDir(), imageFromDockerfileConfig.Context),
+			DockerignorePatterns: dockerignorePatterns,
+		})
+	}
 
 	p, err := parser.Parse(bytes.NewReader(dockerfileData))
 	if err != nil {
@@ -1167,7 +1198,7 @@ func prepareImageBasedOnImageFromDockerfile(ctx context.Context, imageFromDocker
 			imageFromDockerfileConfig.Dockerfile,
 			imageFromDockerfileConfig.Target,
 			imageFromDockerfileConfig.Context,
-			imageFromDockerfileConfig.ContextAddFile,
+			imageFromDockerfileConfig.ContextAddFiles,
 			imageFromDockerfileConfig.Args,
 			imageFromDockerfileConfig.AddHost,
 			imageFromDockerfileConfig.Network,

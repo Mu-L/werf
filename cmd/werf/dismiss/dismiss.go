@@ -105,8 +105,10 @@ Read more info about Helm Release name, Kubernetes Namespace and how to change i
 	common.SetupLogProjectDir(&commonCmdData, cmd)
 
 	common.SetupDisableAutoHostCleanup(&commonCmdData, cmd)
-	common.SetupAllowedVolumeUsage(&commonCmdData, cmd)
-	common.SetupAllowedVolumeUsageMargin(&commonCmdData, cmd)
+	common.SetupAllowedDockerStorageVolumeUsage(&commonCmdData, cmd)
+	common.SetupAllowedDockerStorageVolumeUsageMargin(&commonCmdData, cmd)
+	common.SetupAllowedLocalCacheVolumeUsage(&commonCmdData, cmd)
+	common.SetupAllowedLocalCacheVolumeUsageMargin(&commonCmdData, cmd)
 	common.SetupDockerServerStoragePath(&commonCmdData, cmd)
 
 	cmd.Flags().BoolVarP(&cmdData.WithNamespace, "with-namespace", "", common.GetBoolEnvironmentDefaultFalse("WERF_WITH_NAMESPACE"), "Delete Kubernetes Namespace after purging Helm Release (default $WERF_WITH_NAMESPACE)")
@@ -193,7 +195,12 @@ func runDismiss(ctx context.Context) error {
 		return fmt.Errorf("getting helm chart dir failed: %s", err)
 	}
 
-	wc := chart_extender.NewWerfChart(ctx, giterminismManager, nil, chartDir, cmd_helm.Settings, chart_extender.WerfChartOptions{})
+	registryClientHandle, err := common.NewHelmRegistryClientHandle(ctx)
+	if err != nil {
+		return fmt.Errorf("unable to create helm registry client: %s", err)
+	}
+
+	wc := chart_extender.NewWerfChart(ctx, giterminismManager, nil, chartDir, cmd_helm.Settings, registryClientHandle, chart_extender.WerfChartOptions{})
 
 	if err := wc.SetEnv(*commonCmdData.Environment); err != nil {
 		return err
@@ -203,7 +210,7 @@ func runDismiss(ctx context.Context) error {
 	}
 
 	actionConfig := new(action.Configuration)
-	if err := helm.InitActionConfig(ctx, common.GetOndemandKubeInitializer(), namespace, cmd_helm.Settings, actionConfig, helm.InitActionConfigOptions{
+	if err := helm.InitActionConfig(ctx, common.GetOndemandKubeInitializer(), namespace, cmd_helm.Settings, registryClientHandle, actionConfig, helm.InitActionConfigOptions{
 		StatusProgressPeriod:      time.Duration(*commonCmdData.StatusProgressPeriodSeconds) * time.Second,
 		HooksStatusProgressPeriod: time.Duration(*commonCmdData.HooksStatusProgressPeriodSeconds) * time.Second,
 		KubeConfigOptions: kube.KubeConfigOptions{

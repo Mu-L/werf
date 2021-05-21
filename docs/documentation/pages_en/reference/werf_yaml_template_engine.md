@@ -97,7 +97,7 @@ The `tpl` function allows evaluating string as a template inside a template.
 __Syntax__:
 {% raw %}
 ```yaml
-{{ tpl <STRING> <VALUES> }}
+{{ tpl "<STRING>" <VALUES> }}
 ```
 {% endraw %}
 
@@ -175,12 +175,12 @@ shell:
 
 #### env
 
-The `env` function reads an environment variable. The environment variable must be set but the value can be empty.
+The `env` function reads an environment variable. The environment variable must be set, but the value can be empty.
 
 __Syntax__:
 {% raw %}
 ```yaml
-{{ env <ENV_NAME> }}
+{{ env "<ENV_NAME>" }}
 ```
 {% endraw %}
 
@@ -195,7 +195,7 @@ The function `.Files.Get` gets a certain project file content.
 __Syntax__:
 {% raw %}
 ```yaml
-{{ .Files.Get <FILE_PATH> }}
+{{ .Files.Get "<FILE_PATH>" }}
 ```
 {% endraw %}
 
@@ -212,11 +212,11 @@ configVersion: 1
 image: app
 from: alpine
 shell:
-setup:
-- |
-  head -c -1 <<'EOF' > /etc/nginx/nginx.conf
+  setup:
+  - |
+    head -c -1 <<'EOF' > /etc/nginx/nginx.conf
 {{ .Files.Get ".werf/nginx.conf" | indent 4 }}
-  EOF
+    EOF
 ```
 {% endraw %}
 
@@ -231,12 +231,12 @@ configVersion: 1
 image: app
 from: alpine
 ansible:
-setup:
-- name: "Setup /etc/nginx/nginx.conf"
-  copy:
-    content: |
+  setup:
+  - name: "Setup /etc/nginx/nginx.conf"
+    copy:
+      content: |
 {{ .Files.Get ".werf/nginx.conf" | indent 8 }}
-    dest: /etc/nginx/nginx.conf
+      dest: /etc/nginx/nginx.conf
 ```
 {% endraw %}
 
@@ -249,7 +249,7 @@ The function supports [shell pattern matching](https://www.gnu.org/software/find
 __Syntax__:
 {% raw %}
 ```yaml
-{{ .Files.Glob <GLOB> }}
+{{ .Files.Glob "<GLOB>" }}
 ```
 {% endraw %}
 
@@ -266,13 +266,13 @@ configVersion: 1
 image: app
 from: alpine
 shell:
-install: mkdir /app
-setup:
+  install: mkdir /app
+  setup:
 {{ range $path, $content := .Files.Glob "modules/*/images/*/{Dockerfile,werf.inc.yaml}" }}
-- |
-  head -c -1 <<EOF > /app/{{ base $path }}
+  - |
+    head -c -1 <<EOF > /app/{{ base $path }}
 {{ $content | indent 4 }}
-  EOF
+    EOF
 {{ end }}
 ```
 {% endraw %}
@@ -288,15 +288,15 @@ configVersion: 1
 image: app
 from: alpine
 ansible:
-install:
-- raw: mkdir /app
-setup:
+  install:
+  - raw: mkdir /app
+  setup:
 {{ range $path, $content := .Files.Glob "modules/*/images/*/{Dockerfile,werf.inc.yaml}" }}
-- name: "Setup /app/{{ base $path }}"
-  copy:
-    content: |
+  - name: "Setup /app/{{ base $path }}"
+    copy:
+      content: |
 {{ $content | indent 8 }}
-    dest: /app/{{ base $path }}
+      dest: /app/{{ base $path }}
 {{ end }}
 ```
 {% endraw %}

@@ -17,8 +17,6 @@ import (
 
 	"github.com/werf/werf/pkg/deploy/helm"
 
-	"github.com/werf/werf/pkg/deploy/secrets_manager"
-
 	"github.com/werf/werf/pkg/deploy/helm/chart_extender"
 	"github.com/werf/werf/pkg/deploy/helm/chart_extender/helpers"
 	cmd_helm "helm.sh/helm/v3/cmd/helm"
@@ -30,7 +28,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/werf/logboek"
-	"github.com/werf/logboek/pkg/level"
 
 	"github.com/werf/werf/cmd/werf/common"
 	"github.com/werf/werf/pkg/build"
@@ -55,23 +52,20 @@ func NewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "publish",
 		Short: "Publish bundle",
-		Long: common.GetLongCommandDescription(`Publish bundle into the container registry. Werf bundle contains built images defined in the werf.yaml, helm chart, service values which contain built images tags, any custom values and set values params provided during publish invocation, werf addon templates (like werf_image).
+		Long: common.GetLongCommandDescription(`Publish bundle into the container registry. werf bundle contains built images defined in the werf.yaml, helm chart, service values which contain built images tags, any custom values and set values params provided during publish invocation, werf addon templates (like werf_image).
 
 Published into container registry bundle can be rolled out by the "werf bundle" command.
 `),
 		DisableFlagsInUseLine: true,
 		Annotations: map[string]string{
-			common.CmdEnvAnno: common.EnvsDescription(common.WerfDebugAnsibleArgs, common.WerfSecretKey),
+			common.CmdEnvAnno: common.EnvsDescription(),
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := common.BackgroundContext()
 
 			defer global_warnings.PrintGlobalWarnings(ctx)
 
-			logboek.Streams().Mute()
-			logboek.SetAcceptedLevel(level.Error)
-
-			if err := common.ProcessLogOptionsDefaultQuiet(&commonCmdData); err != nil {
+			if err := common.ProcessLogOptions(&commonCmdData); err != nil {
 				common.PrintHelp(cmd)
 				return err
 			}
@@ -116,8 +110,6 @@ Published into container registry bundle can be rolled out by the "werf bundle" 
 	common.SetupSetString(&commonCmdData, cmd)
 	common.SetupSetFile(&commonCmdData, cmd)
 	common.SetupValues(&commonCmdData, cmd)
-	common.SetupSecretValues(&commonCmdData, cmd)
-	common.SetupIgnoreSecretKey(&commonCmdData, cmd)
 
 	common.SetupReportPath(&commonCmdData, cmd)
 	common.SetupReportFormat(&commonCmdData, cmd)
@@ -129,8 +121,10 @@ Published into container registry bundle can be rolled out by the "werf bundle" 
 	common.SetupParallelOptions(&commonCmdData, cmd, common.DefaultBuildParallelTasksLimit)
 
 	common.SetupDisableAutoHostCleanup(&commonCmdData, cmd)
-	common.SetupAllowedVolumeUsage(&commonCmdData, cmd)
-	common.SetupAllowedVolumeUsageMargin(&commonCmdData, cmd)
+	common.SetupAllowedDockerStorageVolumeUsage(&commonCmdData, cmd)
+	common.SetupAllowedDockerStorageVolumeUsageMargin(&commonCmdData, cmd)
+	common.SetupAllowedLocalCacheVolumeUsage(&commonCmdData, cmd)
+	common.SetupAllowedLocalCacheVolumeUsageMargin(&commonCmdData, cmd)
 	common.SetupDockerServerStoragePath(&commonCmdData, cmd)
 
 	common.SetupSkipBuild(&commonCmdData, cmd)
@@ -306,10 +300,12 @@ func runPublish(ctx context.Context) error {
 		logboek.LogOptionalLn()
 	}
 
-	secretsManager := secrets_manager.NewSecretsManager(secrets_manager.SecretsManagerOptions{DisableSecretsDecryption: *commonCmdData.IgnoreSecretKey})
+	registryClientHandle, err := common.NewHelmRegistryClientHandle(ctx)
+	if err != nil {
+		return fmt.Errorf("unable to create helm registry client: %s", err)
+	}
 
-	wc := chart_extender.NewWerfChart(ctx, giterminismManager, secretsManager, chartDir, cmd_helm.Settings, chart_extender.WerfChartOptions{
-		SecretValueFiles: *commonCmdData.SecretValues,
+	wc := chart_extender.NewWerfChart(ctx, giterminismManager, nil, chartDir, cmd_helm.Settings, registryClientHandle, chart_extender.WerfChartOptions{
 		ExtraAnnotations: userExtraAnnotations,
 		ExtraLabels:      userExtraLabels,
 	})
@@ -355,7 +351,7 @@ func runPublish(ctx context.Context) error {
 
 		if err := logboek.Context(ctx).LogProcess("Saving bundle to the local chart helm cache").DoError(func() error {
 			actionConfig := new(action.Configuration)
-			if err := helm.InitActionConfig(ctx, nil, "", cmd_helm.Settings, actionConfig, helm.InitActionConfigOptions{}); err != nil {
+			if err := helm.InitActionConfig(ctx, nil, "", cmd_helm.Settings, registryClientHandle, actionConfig, helm.InitActionConfigOptions{}); err != nil {
 				return err
 			}
 
@@ -370,7 +366,7 @@ func runPublish(ctx context.Context) error {
 
 		if err := logboek.Context(ctx).LogProcess("Pushing bundle %q", bundleRef).DoError(func() error {
 			actionConfig := new(action.Configuration)
-			if err := helm.InitActionConfig(ctx, nil, "", cmd_helm.Settings, actionConfig, helm.InitActionConfigOptions{}); err != nil {
+			if err := helm.InitActionConfig(ctx, nil, "", cmd_helm.Settings, registryClientHandle, actionConfig, helm.InitActionConfigOptions{}); err != nil {
 				return err
 			}
 

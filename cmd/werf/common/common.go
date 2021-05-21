@@ -109,11 +109,13 @@ type CmdData struct {
 
 	Tag *string
 
-	// Host storage GC options
-	DisableAutoHostCleanup   *bool
-	AllowedVolumeUsage       *uint
-	AllowedVolumeUsageMargin *uint
-	DockerServerStoragePath  *string
+	// Host storage cleanup options
+	DisableAutoHostCleanup                *bool
+	DockerServerStoragePath               *string
+	AllowedDockerStorageVolumeUsage       *uint
+	AllowedDockerStorageVolumeUsageMargin *uint
+	AllowedLocalCacheVolumeUsage          *uint
+	AllowedLocalCacheVolumeUsageMargin    *uint
 }
 
 const (
@@ -140,7 +142,7 @@ func SetupGitWorkTree(cmdData *CmdData, cmd *cobra.Command) {
 
 func SetupProjectName(cmdData *CmdData, cmd *cobra.Command) {
 	cmdData.ProjectName = new(string)
-	cmd.Flags().StringVarP(cmdData.ProjectName, "project-name", "N", os.Getenv("WERF_PROJECT_NAME"), "Use custom project name (default $WERF_PROJECT_NAME)")
+	cmd.Flags().StringVarP(cmdData.ProjectName, "project-name", "N", os.Getenv("WERF_PROJECT_NAME"), "Set a specific project name (default $WERF_PROJECT_NAME)")
 }
 
 func SetupDir(cmdData *CmdData, cmd *cobra.Command) {
@@ -568,7 +570,7 @@ Default $WERF_LOG_COLOR_MODE or auto mode.`)
 func setupLogQuiet(cmdData *CmdData, cmd *cobra.Command, isDefaultQuiet bool) {
 	cmdData.LogQuiet = new(bool)
 
-	var defaultValue = isDefaultQuiet
+	defaultValue := isDefaultQuiet
 
 	for _, envName := range []string{
 		"WERF_LOG_QUIET",
@@ -882,6 +884,14 @@ func GetOptionalStagesStorageAddress(cmdData *CmdData) string {
 	}
 
 	return *cmdData.StagesStorage
+}
+
+func GetLocalStagesStorage(containerRuntime container_runtime.ContainerRuntime) (storage.StagesStorage, error) {
+	return storage.NewStagesStorage(
+		storage.LocalStorageAddress,
+		containerRuntime,
+		storage.StagesStorageOptions{},
+	)
 }
 
 func GetStagesStorage(stagesStorageAddress string, containerRuntime container_runtime.ContainerRuntime, cmdData *CmdData) (storage.StagesStorage, error) {
@@ -1208,47 +1218,14 @@ func ProcessLogOptions(cmdData *CmdData) error {
 		return err
 	}
 
-	if *cmdData.LogQuiet {
-		logboek.SetAcceptedLevel(level.Error)
-		logboek.Streams().Mute()
-	} else if *cmdData.LogDebug {
-		logboek.SetAcceptedLevel(level.Debug)
-		logboek.Streams().EnablePrefixWithTime()
-		logboek.Streams().SetPrefixStyle(style.Details())
-	} else if *cmdData.LogVerbose {
-		logboek.SetAcceptedLevel(level.Info)
-	}
-
-	if !*cmdData.LogPretty {
-		logboek.Streams().DisablePrettyLog()
-		logging.DisablePrettyLog()
-	}
-
-	if err := ProcessLogTerminalWidth(cmdData); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func ProcessLogOptionsDefaultQuiet(cmdData *CmdData) error {
-	if !*cmdData.LogQuiet {
-		logboek.Streams().Unmute()
-		logboek.SetAcceptedLevel(level.Default)
-	}
-
-	if err := ProcessLogColorMode(cmdData); err != nil {
-		return err
-	}
-
 	if *cmdData.LogDebug {
-		logboek.Streams().Unmute()
 		logboek.SetAcceptedLevel(level.Debug)
 		logboek.Streams().EnablePrefixWithTime()
 		logboek.Streams().SetPrefixStyle(style.Details())
 	} else if *cmdData.LogVerbose {
-		logboek.Streams().Unmute()
 		logboek.SetAcceptedLevel(level.Info)
+	} else if *cmdData.LogQuiet {
+		logboek.SetAcceptedLevel(level.Error)
 	}
 
 	if !*cmdData.LogPretty {

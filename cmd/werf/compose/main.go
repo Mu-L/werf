@@ -7,9 +7,6 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/werf/werf/pkg/git_repo/gitdata"
-	"github.com/werf/werf/pkg/giterminism_manager"
-
 	"github.com/spf13/cobra"
 
 	"github.com/werf/logboek"
@@ -19,7 +16,10 @@ import (
 	"github.com/werf/werf/pkg/container_runtime"
 	"github.com/werf/werf/pkg/docker"
 	"github.com/werf/werf/pkg/git_repo"
+	"github.com/werf/werf/pkg/git_repo/gitdata"
+	"github.com/werf/werf/pkg/giterminism_manager"
 	"github.com/werf/werf/pkg/image"
+	"github.com/werf/werf/pkg/logging"
 	"github.com/werf/werf/pkg/ssh_agent"
 	"github.com/werf/werf/pkg/storage/lrumeta"
 	"github.com/werf/werf/pkg/storage/manager"
@@ -34,21 +34,24 @@ type newCmdOptions struct {
 	Example       string
 	FollowSupport bool
 	ArgsSupport   bool
+	ArgsRequired  bool
 }
 
-type cmdDataType struct {
+type composeCmdData struct {
 	RawComposeOptions        string
 	RawComposeCommandOptions string
+
+	WerfImagesToProcess []string
 
 	ComposeBinPath        string
 	ComposeOptions        []string
 	ComposeCommandOptions []string
-	ComposeServices       []string
+	ComposeCommandArgs    []string
 }
 
 func NewConfigCmd() *cobra.Command {
 	return newCmd("config", &newCmdOptions{
-		Use: "config [options] [--docker-compose-options=\"OPTIONS\"] [--docker-compose-command-options=\"OPTIONS\"]",
+		Use: "config [IMAGE_NAME...] [options] [--docker-compose-options=\"OPTIONS\"] [--docker-compose-command-options=\"OPTIONS\"]",
 		Example: `  # Render compose file
   $ werf compose config --repo localhost:5000/test --quiet
   version: '3.8'
@@ -61,16 +64,29 @@ func NewConfigCmd() *cobra.Command {
 
   # Print docker-compose command without executing
   $ werf compose config --docker-compose-options="-f docker-compose-test.yml" --docker-compose-command-options="--resolve-image-digests" --dry-run --quiet
-  export WERF_APP_DOCKER_IMAGE_NAME=localhost:5000/project:570c59946a7f77873d361efd25a637c4ccde86abf3d3186add19bded-1604928781528
+  export WERF_APP_DOCKER_IMAGE_NAME=project:570c59946a7f77873d361efd25a637c4ccde86abf3d3186add19bded-1604928781528
   docker-compose -f docker-compose-test.yml config --resolve-image-digests`,
 		FollowSupport: false,
 		ArgsSupport:   false,
 	})
 }
 
+func NewRunCmd() *cobra.Command {
+	return newCmd("run", &newCmdOptions{
+		Use: "run [IMAGE_NAME...] [options] [--docker-compose-options=\"OPTIONS\"] [--docker-compose-command-options=\"OPTIONS\"] -- SERVICE [COMMAND] [ARGS...]",
+		Example: `  # Print docker-compose command without executing
+  $ werf compose run --docker-compose-options="-f docker-compose-test.yml" --docker-compose-command-options="-e TOKEN=123" --dry-run --quiet -- test
+  export WERF_TEST_DOCKER_IMAGE_NAME=test:03dc2e0bceb09833f54fcab39e89e6e4137316ebbe544aeec8184420-1620123105753
+  docker-compose -f docker-compose-test.yml up -e TOKEN=123 -- test`,
+		FollowSupport: false,
+		ArgsSupport:   true,
+		ArgsRequired:  true,
+	})
+}
+
 func NewUpCmd() *cobra.Command {
 	return newCmd("up", &newCmdOptions{
-		Use: "up [options] [--docker-compose-options=\"OPTIONS\"] [--docker-compose-command-options=\"OPTIONS\"] [--] [SERVICE...]",
+		Use: "up [IMAGE_NAME...] [options] [--docker-compose-options=\"OPTIONS\"] [--docker-compose-command-options=\"OPTIONS\"] [--] [SERVICE...]",
 		Example: `  # Run docker-compose up with forwarded image names
   $ werf compose up
 
@@ -88,7 +104,7 @@ func NewUpCmd() *cobra.Command {
 
 func NewDownCmd() *cobra.Command {
 	return newCmd("down", &newCmdOptions{
-		Use: "down [options] [--docker-compose-options=\"OPTIONS\"] [--docker-compose-command-options=\"OPTIONS\"]",
+		Use: "down [IMAGE_NAME...] [options] [--docker-compose-options=\"OPTIONS\"] [--docker-compose-command-options=\"OPTIONS\"]",
 		Example: `  # Run docker-compose down with forwarded image names
   $ werf compose down
 
@@ -102,7 +118,7 @@ func NewDownCmd() *cobra.Command {
 }
 
 func newCmd(composeCmdName string, options *newCmdOptions) *cobra.Command {
-	var cmdData cmdDataType
+	var cmdData composeCmdData
 	var commonCmdData common.CmdData
 
 	short := fmt.Sprintf("Run docker-compose %s command with forwarded image names", composeCmdName)
@@ -112,7 +128,9 @@ func newCmd(composeCmdName string, options *newCmdOptions) *cobra.Command {
 Image environment name format: $WERF_<FORMATTED_WERF_IMAGE_NAME>_DOCKER_IMAGE_NAME ($WERF_DOCKER_IMAGE_NAME for nameless image).
 <FORMATTED_WERF_IMAGE_NAME> is werf image name from werf.yaml modified according to the following rules:
 - all characters are uppercase (app -> APP);
-- charset /- is replaced with _ (DEV/APP-FRONTEND -> DEV_APP_FRONTEND).`
+- charset /- is replaced with _ (DEV/APP-FRONTEND -> DEV_APP_FRONTEND).
+
+If one or more IMAGE_NAME parameters specified, werf will build and forward only these images`
 	long = common.GetLongCommandDescription(long)
 	cmd := &cobra.Command{
 		Use:                   options.Use,
@@ -133,10 +151,12 @@ Image environment name format: $WERF_<FORMATTED_WERF_IMAGE_NAME>_DOCKER_IMAGE_NA
 			}
 
 			if options.ArgsSupport {
-				if err := processArgs(cmdData, cmd, args); err != nil {
-					common.PrintHelp(cmd)
-					return err
-				}
+				processArgs(&cmdData, cmd, args)
+			}
+
+			if options.ArgsRequired && len(cmdData.ComposeCommandArgs) == 0 {
+				common.PrintHelp(cmd)
+				return fmt.Errorf("unsupported position args format")
 			}
 
 			if len(cmdData.RawComposeOptions) != 0 {
@@ -201,7 +221,7 @@ Image environment name format: $WERF_<FORMATTED_WERF_IMAGE_NAME>_DOCKER_IMAGE_NA
 	return cmd
 }
 
-func checkComposeBin(cmdData cmdDataType) error {
+func checkComposeBin(cmdData composeCmdData) error {
 	dockerComposeBinPath := "docker-compose"
 	if cmdData.ComposeBinPath != "" {
 		dockerComposeBinPath = cmdData.ComposeBinPath
@@ -213,29 +233,19 @@ func checkComposeBin(cmdData cmdDataType) error {
 	return nil
 }
 
-func processArgs(cmdData cmdDataType, cmd *cobra.Command, args []string) error {
+func processArgs(cmdData *composeCmdData, cmd *cobra.Command, args []string) {
 	doubleDashInd := cmd.ArgsLenAtDash()
 	doubleDashExist := cmd.ArgsLenAtDash() != -1
 
 	if doubleDashExist {
-		if doubleDashInd == len(args) {
-			return fmt.Errorf("unsupported position args format")
-		}
-
-		switch doubleDashInd {
-		case 0:
-			cmdData.ComposeServices = args[doubleDashInd:]
-		default:
-			return fmt.Errorf("unsupported position args format")
-		}
+		cmdData.WerfImagesToProcess = args[:doubleDashInd]
+		cmdData.ComposeCommandArgs = args[doubleDashInd:]
 	} else if len(args) != 0 {
-		return fmt.Errorf("unsupported position args format")
+		cmdData.WerfImagesToProcess = args
 	}
-
-	return nil
 }
 
-func checkDetachDockerComposeOption(cmdData cmdDataType) error {
+func checkDetachDockerComposeOption(cmdData composeCmdData) error {
 	for _, value := range cmdData.ComposeCommandOptions {
 		if value == "-d" || value == "--detach" {
 			return nil
@@ -245,7 +255,7 @@ func checkDetachDockerComposeOption(cmdData cmdDataType) error {
 	return fmt.Errorf("the containers must be launched in the background (in follow mode): pass -d/--detach with --docker-compose-command-options option")
 }
 
-func runMain(dockerComposeCmdName string, cmdData cmdDataType, commonCmdData common.CmdData, followSupport bool) error {
+func runMain(dockerComposeCmdName string, cmdData composeCmdData, commonCmdData common.CmdData, followSupport bool) error {
 	ctx := common.BackgroundContext()
 
 	if err := werf.Init(*commonCmdData.TmpDir, *commonCmdData.HomeDir); err != nil {
@@ -317,10 +327,16 @@ func runMain(dockerComposeCmdName string, cmdData cmdDataType, commonCmdData com
 	}
 }
 
-func run(ctx context.Context, giterminismManager giterminism_manager.Interface, commonCmdData common.CmdData, cmdData cmdDataType, dockerComposeCmdName string) error {
+func run(ctx context.Context, giterminismManager giterminism_manager.Interface, commonCmdData common.CmdData, cmdData composeCmdData, dockerComposeCmdName string) error {
 	werfConfig, err := common.GetRequiredWerfConfig(ctx, &commonCmdData, giterminismManager, common.GetWerfConfigOptions(&commonCmdData, true))
 	if err != nil {
 		return fmt.Errorf("unable to load werf config: %s", err)
+	}
+
+	for _, imageToProcess := range cmdData.WerfImagesToProcess {
+		if !werfConfig.HasImageOrArtifact(imageToProcess) {
+			return fmt.Errorf("specified image %s is not defined in werf.yaml", logging.ImageLogName(imageToProcess, false))
+		}
 	}
 
 	projectName := werfConfig.Meta.Project
@@ -358,7 +374,7 @@ func run(ctx context.Context, giterminismManager giterminism_manager.Interface, 
 
 	logboek.Context(ctx).Info().LogOptionalLn()
 
-	conveyorWithRetry := build.NewConveyorWithRetryWrapper(werfConfig, giterminismManager, []string{}, giterminismManager.ProjectDir(), projectTmpDir, ssh_agent.SSHAuthSock, containerRuntime, storageManager, storageLockManager, common.GetConveyorOptions(&commonCmdData))
+	conveyorWithRetry := build.NewConveyorWithRetryWrapper(werfConfig, giterminismManager, cmdData.WerfImagesToProcess, giterminismManager.ProjectDir(), projectTmpDir, ssh_agent.SSHAuthSock, containerRuntime, storageManager, storageLockManager, common.GetConveyorOptions(&commonCmdData))
 	defer conveyorWithRetry.Terminate()
 
 	var envArray []string
@@ -391,9 +407,9 @@ func run(ctx context.Context, giterminismManager giterminism_manager.Interface, 
 	dockerComposeArgs = append(dockerComposeArgs, dockerComposeCmdName)
 	dockerComposeArgs = append(dockerComposeArgs, cmdData.ComposeCommandOptions...)
 
-	if len(cmdData.ComposeServices) != 0 {
+	if len(cmdData.ComposeCommandArgs) != 0 {
 		dockerComposeArgs = append(dockerComposeArgs, "--")
-		dockerComposeArgs = append(dockerComposeArgs, cmdData.ComposeServices...)
+		dockerComposeArgs = append(dockerComposeArgs, cmdData.ComposeCommandArgs...)
 	}
 
 	if *commonCmdData.DryRun {
